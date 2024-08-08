@@ -31,7 +31,7 @@ const (
 
 var (
 	prometheusEndpoint = flag.String("prometheus", "http://10.10.103.133:31277/", "Prometheus endpoint")
-	namespace          = flag.String("namespace", "kube-system", "Kubernetes namespace, defaults to all")
+	namespace          = flag.String("namespace", "", "Kubernetes namespace, defaults to all")
 	nameMaxWidth       = flag.Int("name-max-width", 32, "Maximum width of the name column")
 	duration           = flag.Duration("duration", 0, "Duration of the retention period")
 	minMem             = flag.Int("min-memory", 100, "Minimum memory size(MiB)")
@@ -105,16 +105,10 @@ func renderResult(workloads map[WorkloadKey]*WorkloadInfo, NameWidthMax int) {
 	}})
 	t.AppendHeader(table.Row{"Namespace", "Name", "Type", "Container", "Req CPU", "ReqMemory", "Limit CPU", "Limit Memory"})
 	for _, w := range workloads {
-		for i, c := range w.Containers {
-			if i == 0 {
-				t.AppendRows([]table.Row{{
-					w.Namespace, w.Name, w.Kind, c.Name, c.Request.CPU, c.Request.Mem, c.Limit.CPU, c.Limit.Mem,
-				}})
-			} else {
-				t.AppendRows([]table.Row{{
-					"", "", "", c.Name, c.Request.CPU, c.Request.Mem, c.Limit.CPU, c.Limit.Mem,
-				}})
-			}
+		for _, c := range w.Containers {
+			t.AppendRows([]table.Row{{
+				w.Namespace, w.Name, w.Kind, c.Name, c.Request.CPU, c.Request.Mem, c.Limit.CPU, c.Limit.Mem,
+			}})
 		}
 		t.AppendSeparator()
 

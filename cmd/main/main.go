@@ -4,11 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/dustin/go-humanize"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/prometheus/common/model"
 	"krr-go/pkg/prom"
 	"krr-go/pkg/utils"
@@ -17,10 +20,6 @@ import (
 const (
 	DataDay     = 7
 	DefaultStep = time.Minute * 30
-
-	MinCPU       = 0.05
-	MiniMem      = 10
-	MemoryBuffer = 0.15
 
 	DaemonSetKind   = "DaemonSet"
 	JobKind         = "Job"
@@ -33,6 +32,11 @@ const (
 var (
 	prometheusEndpoint = flag.String("prometheus", "http://10.10.103.133:31277/", "Prometheus endpoint")
 	namespace          = flag.String("namespace", "kube-system", "Kubernetes namespace, defaults to all")
+	nameMaxWidth       = flag.Int("name-max-width", 32, "Maximum width of the name column")
+	duration           = flag.Duration("duration", 0, "Duration of the retention period")
+	minMem             = flag.Int("min-memory", 100, "Minimum memory size(MiB)")
+	minCPU             = flag.Float64("min-cpu", 0.05, "Minimum CPU cores")
+	memoryBuffer       = flag.Float64("memory-buffer", 0.15, "Memory buffer percentage")
 	logger             = utils.GetLogger()
 )
 
@@ -48,18 +52,80 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
-	workloads, err := getWorkload(ctx, *namespace, prometheus)
+
+	err = ResourceRecommend(ctx, prometheus)
 	if err != nil {
 		logger.Fatal(err)
 	}
-	_ = workloads
+	if *duration == 0 {
+		return
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.Tick(*duration):
+			logger.Infof("running retention period in %v", time.Now())
+			err := ResourceRecommend(ctx, prometheus)
+			if err != nil {
+				logger.Error(err)
+			}
+		}
+	}
+}
+
+func ResourceRecommend(ctx context.Context, prometheus *prom.Prometheus) error {
+	workloads, err := getWorkload(ctx, *namespace, prometheus)
+	if err != nil {
+		return err
+	}
 	for _, workload := range workloads {
 		err := resourceRecommend(ctx, prometheus, workload)
 		if err != nil {
-			logger.Fatal(err)
+			return err
 		}
 	}
 
+	renderResult(workloads, *nameMaxWidth)
+	return nil
+}
+
+func renderResult(workloads map[WorkloadKey]*WorkloadInfo, NameWidthMax int) {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.SetColumnConfigs([]table.ColumnConfig{
+		//{Name: "Namespace", AutoMerge: true},
+		{Name: "Name", WidthMax: NameWidthMax},
+		//{Name: "Type", AutoMerge: true},
+		//{Name: "Name", Align: text.AlignJustify},
+	})
+	t.SortBy([]table.SortBy{{
+		Name: "Namespace",
+	}})
+	t.AppendHeader(table.Row{"Namespace", "Name", "Type", "Container", "Req CPU", "ReqMemory", "Limit CPU", "Limit Memory"})
+	for _, w := range workloads {
+		for i, c := range w.Containers {
+			if i == 0 {
+				t.AppendRows([]table.Row{{
+					w.Namespace, w.Name, w.Kind, c.Name, c.Request.CPU, c.Request.Mem, c.Limit.CPU, c.Limit.Mem,
+				}})
+			} else {
+				t.AppendRows([]table.Row{{
+					"", "", "", c.Name, c.Request.CPU, c.Request.Mem, c.Limit.CPU, c.Limit.Mem,
+				}})
+			}
+		}
+		t.AppendSeparator()
+
+	}
+
+	//t.AppendFooter(rowFooter)
+	t.SetIndexColumn(1)
+	t.SetAutoIndex(true)
+	t.Render()
+
+	return
 }
 
 func resourceRecommend(ctx context.Context, prometheus *prom.Prometheus, workload *WorkloadInfo) error {
@@ -82,24 +148,28 @@ func containersResourceRecommend(ctx context.Context, prometheus *prom.Prometheu
 			0.85, workload.Namespace, workload.podsSelector(),
 			container.Name, DefaultStep, DataDay)
 		if err != nil {
-			logger.Errorf("failed to get cpu request value: %v", err)
-			cpuReq = -1
+			logger.Errorf("failed to get %s %s/%s cpu request value: %v", workload.Kind, workload.Namespace, workload.Name, err)
+		} else {
+			container.Request.CPU = CPUResource(max(cpuReq, *minCPU))
 		}
 		cpuLimit, err := percentileCPU(ctx, prometheus,
 			0.95, workload.Namespace, workload.podsSelector(),
 			container.Name, DefaultStep, DataDay)
 		if err != nil {
-			logger.Errorf("failed to get cpu limit value: %v", err)
-			cpuLimit = -1
+			logger.Errorf("failed to get %s %s/%s cpu limit value: %v", workload.Kind, workload.Namespace, workload.Name, err)
+		} else {
+			container.Limit.CPU = CPUResource(max(cpuLimit, *minCPU))
 		}
+
 		maxMem, err := maxMemory(ctx, prometheus,
 			workload.Namespace, workload.podsSelector(),
 			container.Name, DefaultStep, DataDay)
-
-		container.Request.CPU = max(cpuReq, MinCPU)
-		container.Request.Mem = maxMem
-		container.Limit.CPU = max(cpuLimit, MinCPU)
-		container.Limit.Mem = maxMem * (1 + MemoryBuffer)
+		if err != nil {
+			logger.Errorf("failed to get %s %s/%s max memory value: %v", workload.Kind, workload.Namespace, workload.Name, err)
+		} else {
+			container.Request.Mem = MemoryResource(max(maxMem, float64(*minMem*1024*1024)))
+			container.Limit.Mem = MemoryResource(max(maxMem*(1+*memoryBuffer), float64(*minMem*1024*1024)))
+		}
 	}
 	return nil
 }
@@ -270,12 +340,27 @@ func (c *Container) String() string {
 }
 
 type Resource struct {
-	CPU float64 `json:"cpu"`
-	Mem float64 `json:"mem"`
+	CPU CPUResource    `json:"cpu"`
+	Mem MemoryResource `json:"mem"`
+}
+
+type CPUResource float64
+
+func (r CPUResource) String() string {
+	if r < 1 {
+		return fmt.Sprintf("%dm", int(r*1000))
+	}
+	return fmt.Sprintf("%.1f", float64(r))
+}
+
+type MemoryResource float64
+
+func (r MemoryResource) String() string {
+	return humanize.Bytes(uint64(r))
 }
 
 func (r Resource) String() string {
-	return fmt.Sprintf("cpu: %f, mem: %f", r.CPU, r.Mem)
+	return fmt.Sprintf("cpu: %sC, mem: %s", r.CPU, r.Mem)
 }
 
 type WorkloadKey struct {
@@ -290,31 +375,16 @@ func percentileCPU(
 	namespace, podsSelector, container string,
 	step time.Duration, duration int,
 ) (float64, error) {
-	ql := fmt.Sprintf(`quantile_over_time(
-				%.2f,
-				max(
-					rate(
-						container_cpu_usage_seconds_total{
-							namespace="%s",
-							pod=~"%s",
-							container="%s"
-						}[%s]
-					)
-				) by (container, pod, job)
-				[%dd:%s]
-			)`, percentile, namespace, podsSelector, container, step, duration, step)
+	ql := fmt.Sprintf(`quantile_over_time(%.2f,max(rate(container_cpu_usage_seconds_total{namespace="%s",pod=~"%s",container="%s"}[%s])) by (container, pod, job)[%dd:%s])`,
+		percentile, namespace, podsSelector, container, step, duration, step)
 
-	noSpaces := strings.ReplaceAll(ql, " ", "")
-	noTabs := strings.ReplaceAll(noSpaces, "\t", "")
-	noNewlines := strings.ReplaceAll(noTabs, "\n", "")
-	logger.Info(noNewlines)
 	data, err := prometheus.Query(ctx, ql, time.Now())
 	v, err := prom.GetVectorResult(data)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error querying workload metrics: %w, ql: %s", err, ql)
 	}
 	if v.Len() == 0 {
-		return 0, fmt.Errorf("empty result")
+		return 0, fmt.Errorf("empty result, ql: %s", ql)
 	}
 
 	return float64(v[0].Value), nil

@@ -11,8 +11,15 @@ COPY vendor/ vendor/
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 
+RUN echo "Target platform: $TARGETPLATFORM" && \
+    export PLATFORM="${TARGETPLATFORM}" && \
+    export GOOS=$(echo "${PLATFORM}" | cut -d / -f2) && \
+    export GOARCH=$(echo "${PLATFORM}" | cut -d / -f1) && \
+    echo "GOOS set to: $GOOS" && \
+    echo "GOARCH set to: $GOARCH"
+
 # Build
-RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
     go build -a -o main cmd/main/main.go
 
 FROM --platform=$TARGETPLATFORM alpine

@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	DataDay     = 7
 	DefaultStep = time.Minute * 30
 
 	DaemonSetKind   = "DaemonSet"
@@ -34,6 +33,7 @@ var (
 	prometheusUsername = flag.String("prometheus-username", "", "Prometheus username")
 	prometheusPassword = flag.String("prometheus-password", "", "Prometheus password")
 	namespace          = flag.String("namespace", "", "Kubernetes namespace, defaults to all")
+	dataDays           = flag.Int("data-days", 7, "Source Data Day")
 	nameMaxWidth       = flag.Int("name-max-width", 32, "Maximum width of the name column")
 	duration           = flag.Duration("duration", 0, "Duration of the retention period")
 	minMem             = flag.Int("min-memory", 100, "Minimum memory size(MiB)")
@@ -148,7 +148,7 @@ func containersResourceRecommend(ctx context.Context, prometheus *prom.Prometheu
 	for _, container := range workload.Containers {
 		cpuReq, err := percentileCPU(ctx, prometheus,
 			0.85, workload.Namespace, workload.podsSelector(),
-			container.Name, DefaultStep, DataDay)
+			container.Name, DefaultStep, *dataDays)
 		if err != nil {
 			logger.Errorf("failed to get %s %s/%s cpu request value: %v", workload.Kind, workload.Namespace, workload.Name, err)
 		} else {
@@ -156,7 +156,7 @@ func containersResourceRecommend(ctx context.Context, prometheus *prom.Prometheu
 		}
 		cpuLimit, err := percentileCPU(ctx, prometheus,
 			0.95, workload.Namespace, workload.podsSelector(),
-			container.Name, DefaultStep, DataDay)
+			container.Name, DefaultStep, *dataDays)
 		if err != nil {
 			logger.Errorf("failed to get %s %s/%s cpu limit value: %v", workload.Kind, workload.Namespace, workload.Name, err)
 		} else {
@@ -165,7 +165,7 @@ func containersResourceRecommend(ctx context.Context, prometheus *prom.Prometheu
 
 		maxMem, err := maxMemory(ctx, prometheus,
 			workload.Namespace, workload.podsSelector(),
-			container.Name, DefaultStep, DataDay)
+			container.Name, DefaultStep, *dataDays)
 		if err != nil {
 			logger.Errorf("failed to get %s %s/%s max memory value: %v", workload.Kind, workload.Namespace, workload.Name, err)
 		} else {
@@ -179,7 +179,7 @@ func containersResourceRecommend(ctx context.Context, prometheus *prom.Prometheu
 func getContainers(ctx context.Context, prometheus *prom.Prometheus, workload *WorkloadInfo) error {
 	ql := fmt.Sprintf(
 		`count(last_over_time(kube_pod_container_info{pod=~"%s",namespace="%s"}[%dd])) by (container)`,
-		workload.podsSelector(), workload.Namespace, DataDay,
+		workload.podsSelector(), workload.Namespace, *dataDays,
 	)
 	data, err := prometheus.Query(ctx, ql, time.Now())
 	if err != nil {
@@ -245,9 +245,9 @@ func getWorkload(ctx context.Context, namespace string, prometheus *prom.Prometh
 func getPodOwner(ctx context.Context, namespace string, prometheus *prom.Prometheus) (map[WorkloadKey]*WorkloadInfo, error) {
 	var ql string
 	if namespace != "" {
-		ql = fmt.Sprintf(`last_over_time(kube_pod_owner{namespace="%s",}[%dd])`, namespace, DataDay)
+		ql = fmt.Sprintf(`last_over_time(kube_pod_owner{namespace="%s",}[%dd])`, namespace, *dataDays)
 	} else {
-		ql = fmt.Sprintf(`last_over_time(kube_pod_owner{}[%dd])`, DataDay)
+		ql = fmt.Sprintf(`last_over_time(kube_pod_owner{}[%dd])`, *dataDays)
 	}
 	data, err := prometheus.Query(ctx, ql, time.Now())
 	if err != nil {
@@ -265,9 +265,9 @@ func getPodOwner(ctx context.Context, namespace string, prometheus *prom.Prometh
 func getReplicaSetOwner(ctx context.Context, namespace string, prometheus *prom.Prometheus) (map[WorkloadKey]WorkloadKey, error) {
 	var ql string
 	if namespace != "" {
-		ql = fmt.Sprintf(`last_over_time(kube_replicaset_owner{namespace="%s"}[%dd])`, namespace, DataDay)
+		ql = fmt.Sprintf(`last_over_time(kube_replicaset_owner{namespace="%s"}[%dd])`, namespace, *dataDays)
 	} else {
-		ql = fmt.Sprintf("last_over_time(kube_replicaset_owner{}[%dd])", DataDay)
+		ql = fmt.Sprintf("last_over_time(kube_replicaset_owner{}[%dd])", *dataDays)
 	}
 	data, err := prometheus.Query(ctx, ql, time.Now())
 	if err != nil {

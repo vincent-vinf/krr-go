@@ -11,29 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-// StaticSecret implements the SecretReader interface for static strings
-type StaticSecret string
-
-func (s StaticSecret) Fetch(ctx context.Context) (string, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s StaticSecret) Description() string {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (s StaticSecret) Immutable() bool {
-	//TODO implement me
-	panic("implement me")
-}
-
-// Get implements the SecretReader interface, returning the secret
-func (s StaticSecret) Get() (string, error) {
-	return string(s), nil
-}
-
 type Prometheus struct {
 	api v1.API
 }
@@ -51,8 +28,8 @@ func NewPrometheus(endpoint string) (*Prometheus, error) {
 
 func NewPrometheusWithAuth(endpoint string, username, password string) (*Prometheus, error) {
 	// 创建带认证信息的 RoundTripper
-	usernameSecret := StaticSecret(username)
-	passwordSecret := StaticSecret(password)
+	usernameSecret := config.NewInlineSecret(username)
+	passwordSecret := config.NewInlineSecret(password)
 	rt := config.NewBasicAuthRoundTripper(usernameSecret, passwordSecret, api.DefaultRoundTripper)
 
 	// 使用带认证的 RoundTripper 创建 Prometheus 客户端

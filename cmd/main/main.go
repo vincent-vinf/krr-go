@@ -362,7 +362,7 @@ func (r MemoryResource) String() string {
 }
 
 func (r Resource) String() string {
-	return fmt.Sprintf("cpu: %sC, mem: %s", r.CPU, r.Mem)
+	return fmt.Sprintf("cpu: %s, mem: %s", r.CPU, r.Mem)
 }
 
 type WorkloadKey struct {
@@ -399,7 +399,7 @@ func maxMemory(
 ) (float64, error) {
 	ql := fmt.Sprintf(`max_over_time(
                 max(
-                    container_memory_working_set_bytes{
+                    container_memory_rss{
                         namespace="%s",
                         pod=~"%s",
                         container="%s"

@@ -1,0 +1,6 @@
+- `container_cpu_usage_seconds_total` 容器CPU
+- `container_memory_working_set_bytes` 容器 内存
+- `kube_replicaset_owner` rs与deploy关系
+- `kube_pod_owner` pod和owner的关系
+- `kube_pod_status_phase` pod状态
+- `kube_pod_container_info` pod容器信息

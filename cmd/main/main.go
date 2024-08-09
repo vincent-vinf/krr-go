@@ -31,6 +31,8 @@ const (
 
 var (
 	prometheusEndpoint = flag.String("prometheus", "http://10.10.103.133:31277/", "Prometheus endpoint")
+	prometheusUsername = flag.String("prometheus-username", "", "Prometheus username")
+	prometheusPassword = flag.String("prometheus-password", "", "Prometheus password")
 	namespace          = flag.String("namespace", "", "Kubernetes namespace, defaults to all")
 	nameMaxWidth       = flag.Int("name-max-width", 32, "Maximum width of the name column")
 	duration           = flag.Duration("duration", 0, "Duration of the retention period")
@@ -48,7 +50,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	prometheus, err := prom.NewPrometheus(*prometheusEndpoint)
+	var prometheus *prom.Prometheus
+	var err error
+	if *prometheusUsername != "" {
+		prometheus, err = prom.NewPrometheusWithAuth(*prometheusEndpoint, *prometheusUsername, *prometheusPassword)
+	} else {
+		prometheus, err = prom.NewPrometheus(*prometheusEndpoint)
+	}
 	if err != nil {
 		logger.Fatal(err)
 	}

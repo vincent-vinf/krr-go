@@ -7,8 +7,32 @@ import (
 
 	"github.com/prometheus/client_golang/api"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 )
+
+// StaticSecret implements the SecretReader interface for static strings
+type StaticSecret string
+
+func (s StaticSecret) Fetch(ctx context.Context) (string, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s StaticSecret) Description() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s StaticSecret) Immutable() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+// Get implements the SecretReader interface, returning the secret
+func (s StaticSecret) Get() (string, error) {
+	return string(s), nil
+}
 
 type Prometheus struct {
 	api v1.API
@@ -17,6 +41,24 @@ type Prometheus struct {
 func NewPrometheus(endpoint string) (*Prometheus, error) {
 	client, err := api.NewClient(api.Config{
 		Address: endpoint,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &Prometheus{api: v1.NewAPI(client)}, nil
+}
+
+func NewPrometheusWithAuth(endpoint string, username, password string) (*Prometheus, error) {
+	// 创建带认证信息的 RoundTripper
+	usernameSecret := StaticSecret(username)
+	passwordSecret := StaticSecret(password)
+	rt := config.NewBasicAuthRoundTripper(usernameSecret, passwordSecret, api.DefaultRoundTripper)
+
+	// 使用带认证的 RoundTripper 创建 Prometheus 客户端
+	client, err := api.NewClient(api.Config{
+		Address:      endpoint,
+		RoundTripper: rt,
 	})
 	if err != nil {
 		return nil, err

@@ -64,55 +64,10 @@ func (p *Prometheus) QueryRange(ctx context.Context, query string, start, end ti
 	return result, nil
 }
 
-// GetPodCPU return Pod CPU usage(m core * minute) in minute
-//func (p *Prometheus) GetPodCPU(ctx context.Context, promql, namespace, name string, t time.Time) (int64, error) {
-//	query := fmt.Sprintf(promql, namespace, name)
-//	result, err := p.Query(ctx, query, t)
-//	if err != nil {
-//		return 0, fmt.Errorf("query: %s, err: %s", query, err)
-//	}
-//
-//	f, err := getVectorResult(result)
-//	if err != nil {
-//		return 0, fmt.Errorf("query: %s, err: %s", query, err)
-//	}
-//
-//	f = f * 1000 / 60
-//	return int64(math.Ceil(f)), nil
-//}
-//
-//// GetPodMem return Pod max Memory(MiB) in minute
-//func (p *Prometheus) GetPodMem(ctx context.Context, promql, namespace, name string, t time.Time) (int64, error) {
-//	query := fmt.Sprintf(promql, namespace, name)
-//	result, err := p.Query(ctx, query, t)
-//	if err != nil {
-//		return 0, fmt.Errorf("query: %s, err: %s", query, err)
-//	}
-//	f, err := getVectorResult(result)
-//	if err != nil {
-//		return 0, fmt.Errorf("query: %s, err: %s", query, err)
-//	}
-//
-//	f = f / 1024 / 1024
-//
-//	return int64(math.Ceil(f)), nil
-//}
-
 func GetVectorResult(result model.Value) (model.Vector, error) {
 	if result.Type() != model.ValVector {
 		return nil, fmt.Errorf("not vector type, %s", result.Type())
 	}
 	v := result.(model.Vector)
 	return v, nil
-}
-
-func GetMatrixResultOne(result model.Value) ([]model.SamplePair, error) {
-	if result.Type() != model.ValMatrix {
-		return nil, fmt.Errorf("not matrix type, %s", result.Type())
-	}
-	m := result.(model.Matrix)
-	if m.Len() != 1 {
-		return nil, fmt.Errorf("unexpected matrix len, %d", m.Len())
-	}
-	return m[0].Values, nil
 }

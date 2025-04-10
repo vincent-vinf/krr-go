@@ -89,7 +89,7 @@ func renderResult(workloads []*recommender.WorkloadInfo, NameWidthMax int) {
 	}, {
 		Name: "Name",
 	}})
-	t.AppendHeader(table.Row{"Namespace", "Name", "Type", "Container", "Req CPU", "Req Memory", "Limit CPU", "Limit Memory"})
+	t.AppendHeader(table.Row{"Namespace", "Name", "Type", "Container", "ReqCPU", "ReqMem", "LimCPU", "LimMem"})
 	for _, w := range workloads {
 		for _, c := range w.Containers {
 			t.AppendRows([]table.Row{{
